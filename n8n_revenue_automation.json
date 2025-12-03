@@ -1,0 +1,75 @@
+{
+  "name": "5DSens - Revenue Automation Loop",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hours": 6
+            }
+          ]
+        }
+      },
+      "name": "Schedule (6h)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://www.kaggle.com/api/v1/datasets/list?sort_by=hottest",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "headerAuth": {
+          "name": "Authorization",
+          "value": "Bearer {{ $env.KAGGLE_KEY }}"
+        }
+      },
+      "name": "Fetch Kaggle Trends",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "modelId": "gemini-pro",
+        "prompt": "Analyse ces datasets Kaggle et propose 3 idées de shorts YouTube viraux qui utilisent ces données pour expliquer un fait surprenant. Format JSON: [{title, script, visual_prompt}]",
+        "text": "={{ $json.body }}"
+      },
+      "name": "Gemini Analysis",
+      "type": "n8n-nodes-base.googleGeminiChat",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(item => {\n  const content = JSON.parse(item.json.text);\n  return { json: content };\n});"
+      },
+      "name": "Parse AI Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO revenue_tasks (content_title, status, created_at) VALUES ($1, 'pending_production', NOW()) RETURNING id",
+        "additionalFields": {
+          "queryParams": "={{ $json.title }}"
+        }
+      },
+      "name": "Log to DeepSite DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1050, 300]
+    }
+  ],
+  "connections": {
+    "Schedule (6h)": { "main": [[{ "node": "Fetch Kaggle Trends", "type": "main", "index": 0 }]] },
+    "Fetch Kaggle Trends": { "main": [[{ "node": "Gemini Analysis", "type": "main", "index": 0 }]] },
+    "Gemini Analysis": { "main": [[{ "node": "Parse AI Output", "type": "main", "index": 0 }]] },
+    "Parse AI Output": { "main": [[{ "node": "Log to DeepSite DB", "type": "main", "index": 0 }]] }
+  }
+}

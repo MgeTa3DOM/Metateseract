@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # --- 1. DEEPSITE BACKEND ---
+  backend:
+    build: ./deepsite/backend
+    container_name: deepsite-api
+    ports:
+      - "8000:8000"
+    environment:
+      - PROXMOX_URL=${PROXMOX_URL}
+      - PROXMOX_TOKEN=${PROXMOX_TOKEN}
+      - TAILSCALE_KEY=${TAILSCALE_KEY}
+    volumes:
+      - ./deepsite/backend:/app
+    networks:
+      - trinity-net
+
+  # --- 2. DEEPSITE FRONTEND ---
+  frontend:
+    build: ./deepsite/frontend
+    container_name: deepsite-ui
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - trinity-net
+
+  # --- 3. N8N AUTOMATION ---
+  n8n:
+    build: ./n8n
+    container_name: n8n-master
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASS}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./agents:/home/node/agents
+    networks:
+      - trinity-net
+
+  # --- 4. REDIS (Bus de données) ---
+  redis:
+    image: redis:alpine
+    container_name: trinity-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - trinity-net
+
+  # --- 5. POSTGRES (DeepSite DB) ---
+  postgres:
+    image: postgres:15-alpine
+    container_name: deepsite-db
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
+      - POSTGRES_DB=${POSTGRES_DB:-deepsite}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - trinity-net
+
+networks:
+  trinity-net:
+    driver: bridge
+
+volumes:
+  n8n_data:
+  postgres_data:
